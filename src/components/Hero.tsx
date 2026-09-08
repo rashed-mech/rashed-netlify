@@ -180,7 +180,7 @@ export const Hero: React.FC<HeroProps> = ({ profile, data }) => {
                 href="#publications"
                 className="w-full text-center px-4 py-2.5 bg-[#0a192f] hover:bg-slate-800 text-white text-sm font-sans font-bold shadow-md transition-colors"
               >
-                View Articles
+                View Publications
               </a>
               
               <button
