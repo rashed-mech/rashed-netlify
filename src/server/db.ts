@@ -25,13 +25,17 @@ if (!connectionString) {
 }
 
 let pool: any;
-if (connectionString) {
-  pool = new Pool({
-    connectionString,
-    ssl: { rejectUnauthorized: false }
-  });
-} else {
-  console.warn('[AI Studio] DB not connected — mock active');
+try {
+  if (connectionString) {
+    pool = new Pool({
+      connectionString,
+      ssl: { rejectUnauthorized: false }
+    });
+  } else {
+    throw new Error('No connection string');
+  }
+} catch (err) {
+  console.warn('[AI Studio] DB not connected — mock active', err);
   pool = { 
     query: async () => ({ rows: [] }), 
     connect: async () => ({ query: async () => ({ rows: [] }), release: () => {} }) 
