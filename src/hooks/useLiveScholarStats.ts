@@ -31,7 +31,8 @@ export function useLiveScholarStats(
   const [status, setStatus] = useState<ScholarSyncStatus>('idle');
 
   useEffect(() => {
-    if (!scholarUrl) {
+    // Only auto-fetch when on the admin route
+    if (!scholarUrl || !window.location.pathname.startsWith('/admin')) {
       setStatus('idle');
       setLive(null);
       return;

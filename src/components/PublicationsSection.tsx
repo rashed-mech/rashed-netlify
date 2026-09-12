@@ -32,9 +32,7 @@ export const PublicationsSection: React.FC<PublicationsSectionProps> = ({ public
   const [expandedAbstracts, setExpandedAbstracts] = useState<Record<string, boolean>>({});
   const [activeCitationDropdown, setActiveCitationDropdown] = useState<string | null>(null);
   
-  // Citations Sync State
   const [citationCounts, setCitationCounts] = useState<Record<string, number>>({});
-  const [isSyncing, setIsSyncing] = useState(false);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -88,72 +86,7 @@ export const PublicationsSection: React.FC<PublicationsSectionProps> = ({ public
   };
 
 
-  const handleSyncCitations = async (currentCounts: Record<string, number>) => {
-    setIsSyncing(true);
-    let updatedCount = 0;
-    
-    try {
-      const newCounts = { ...currentCounts };
-      let scholarSuccess = false;
-
-      // 1. Try Google Scholar Scraper Backend first
-      if (scholarUrl) {
-        try {
-          const scholarRes = await fetch(`/api/scholar/sync?url=${encodeURIComponent(scholarUrl)}`);
-          if (scholarRes.ok) {
-            const data = await scholarRes.json();
-            if (data.success && data.data) {
-              const scholarCitations = data.data as Record<string, number>;
-              
-              // Map fetched titles to our publications
-              for (const pub of publications) {
-                const pubTitleLower = pub.title.toLowerCase();
-                const matchedKey = Object.keys(scholarCitations).find(k => pubTitleLower.includes(k) || k.includes(pubTitleLower.substring(0, 30)));
-                
-                if (matchedKey) {
-                  newCounts[pub.id] = scholarCitations[matchedKey];
-                  updatedCount++;
-                }
-              }
-              scholarSuccess = true;
-            }
-          }
-        } catch (e) {
-          console.error("Google Scholar backend sync failed, falling back...", e);
-        }
-      }
-
-      // 2. Fallback to Semantic Scholar if Google Scholar failed or wasn't available
-      if (!scholarSuccess) {
-        for (const pub of publications) {
-          if (pub.doi) {
-            try {
-              const cleanDoi = pub.doi.replace('https://doi.org/', '');
-              const res = await fetch(`https://api.semanticscholar.org/graph/v1/paper/DOI:${cleanDoi}?fields=citationCount`);
-              if (res.ok) {
-                const data = await res.json();
-                if (data && typeof data.citationCount === 'number') {
-                  newCounts[pub.id] = data.citationCount;
-                  updatedCount++;
-                }
-              }
-            } catch (e) {
-              console.error("Failed to fetch DOI for", pub.id, e);
-            }
-          }
-        }
-      }
-      
-      setCitationCounts(newCounts);
-      
-    } catch (err: any) {
-      console.error('Failed to sync citations.', err);
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
-  // Initialize citation counts from props and start auto-sync
+  // Initialize citation counts from props (no auto-sync)
   useEffect(() => {
     const initial: Record<string, number> = {};
     publications.forEach(pub => {
@@ -162,10 +95,7 @@ export const PublicationsSection: React.FC<PublicationsSectionProps> = ({ public
       }
     });
     setCitationCounts(initial);
-
-    // Automatically sync on load
-    handleSyncCitations(initial);
-  }, [publications, scholarUrl]);
+  }, [publications]);
 
   const visiblePublications = useMemo(() => {
     return publications.filter(p => p.isVisible !== false);
