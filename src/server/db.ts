@@ -589,30 +589,34 @@ export class PortfolioDatabase {
       const keys = Object.keys(DEFAULT_PORTFOLIO_DATA);
       let foundAny = false;
       
-      // Load all chunks for logoUrl if necessary
+      const imagePromise = getDocs(collection(firestore, 'portfolio_images')).catch(e => {
+         console.warn("Could not load logo chunks", e);
+         return null;
+      });
+
+      const docPromises = keys.map(key => {
+        const docRef = key === 'adminConfig' 
+          ? doc(firestore, 'portfolio', 'adminConfig') 
+          : doc(firestore, 'portfolio', key);
+        return getDoc(docRef).then(snap => ({ key, snap }));
+      });
+
+      const [imageDocs, ...docResults] = await Promise.all([imagePromise, ...docPromises]);
+
       let logoUrl = '';
-      try {
-         const imageDocs = await getDocs(collection(firestore, 'portfolio_images'));
+      if (imageDocs) {
          const chunks: {index: number, data: string}[] = [];
-         imageDocs.forEach(d => {
+         imageDocs.forEach((d: any) => {
             if (d.id.startsWith('logo_')) {
                chunks.push({index: d.data().index, data: d.data().data});
             }
          });
          chunks.sort((a,b) => a.index - b.index);
          logoUrl = chunks.map(c => c.data).join('');
-      } catch (e) {
-         console.warn("Could not load logo chunks", e);
       }
 
-      for (const key of keys) {
-        let docRef;
-        if (key === 'adminConfig') {
-          docRef = doc(firestore, 'portfolio', 'adminConfig');
-        } else {
-          docRef = doc(firestore, 'portfolio', key);
-        }
-        const snap = await getDoc(docRef);
+      for (const result of docResults) {
+        const { key, snap } = result;
         if (snap.exists()) {
           foundAny = true;
           if (key === 'adminConfig') {
@@ -631,9 +635,8 @@ export class PortfolioDatabase {
         this.data = this.mergeWithDefaults(loadedData as PortfolioData);
       }
     } catch (err) {
-      console.error('Error loading portfolio database from Firebase (using in-memory defaults instead):', err);
+      console.error('Error loading portfolio database from Firebase:', err);
     }
-  
   }
 
   // Tracks the most recent Postgres write so callers running in a

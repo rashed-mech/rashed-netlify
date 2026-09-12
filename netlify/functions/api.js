@@ -639,9 +639,17 @@ var PortfolioDatabase = class {
       let loadedData = {};
       const keys = Object.keys(DEFAULT_PORTFOLIO_DATA);
       let foundAny = false;
+      const imagePromise = (0, import_firestore.getDocs)((0, import_firestore.collection)(firestore, "portfolio_images")).catch((e) => {
+        console.warn("Could not load logo chunks", e);
+        return null;
+      });
+      const docPromises = keys.map((key) => {
+        const docRef = key === "adminConfig" ? (0, import_firestore.doc)(firestore, "portfolio", "adminConfig") : (0, import_firestore.doc)(firestore, "portfolio", key);
+        return (0, import_firestore.getDoc)(docRef).then((snap) => ({ key, snap }));
+      });
+      const [imageDocs, ...docResults] = await Promise.all([imagePromise, ...docPromises]);
       let logoUrl = "";
-      try {
-        const imageDocs = await (0, import_firestore.getDocs)((0, import_firestore.collection)(firestore, "portfolio_images"));
+      if (imageDocs) {
         const chunks = [];
         imageDocs.forEach((d) => {
           if (d.id.startsWith("logo_")) {
@@ -650,17 +658,9 @@ var PortfolioDatabase = class {
         });
         chunks.sort((a, b) => a.index - b.index);
         logoUrl = chunks.map((c) => c.data).join("");
-      } catch (e) {
-        console.warn("Could not load logo chunks", e);
       }
-      for (const key of keys) {
-        let docRef;
-        if (key === "adminConfig") {
-          docRef = (0, import_firestore.doc)(firestore, "portfolio", "adminConfig");
-        } else {
-          docRef = (0, import_firestore.doc)(firestore, "portfolio", key);
-        }
-        const snap = await (0, import_firestore.getDoc)(docRef);
+      for (const result of docResults) {
+        const { key, snap } = result;
         if (snap.exists()) {
           foundAny = true;
           if (key === "adminConfig") {
@@ -677,7 +677,7 @@ var PortfolioDatabase = class {
         this.data = this.mergeWithDefaults(loadedData);
       }
     } catch (err) {
-      console.error("Error loading portfolio database from Firebase (using in-memory defaults instead):", err);
+      console.error("Error loading portfolio database from Firebase:", err);
     }
   }
   sync() {
