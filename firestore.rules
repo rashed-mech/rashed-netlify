@@ -1,0 +1,11 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /portfolio/{docId} {
+      allow get, write: if true;
+    }
+    match /portfolio_images/{docId} {
+      allow get, write, list: if true;
+    }
+  }
+}

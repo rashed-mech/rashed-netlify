@@ -1,4 +1,9 @@
-import { Pool } from 'pg';
+import { initializeApp } from 'firebase/app';
+import { getFirestore, doc, getDoc, setDoc, getDocs, collection } from 'firebase/firestore';
+import config from '../../firebase-applet-config.json';
+
+const app = initializeApp(config);
+const firestore = getFirestore(app, config.firestoreDatabaseId || '(default)');
 import { 
   PortfolioData, 
   Publication, 
@@ -15,32 +20,7 @@ import {
   Message 
 } from '../types';
 
-// --- Postgres connection (Neon) ---
-// Prefer the pooled connection string (more resilient to idle disconnects),
-// fall back to the direct one if that's all that's set.
-const connectionString = process.env.DATABASE_URL_POOLED || process.env.DATABASE_URL;
-
-if (!connectionString) {
-  console.error('DATABASE_URL is not set. Database operations will fail until it is configured.');
-}
-
-let pool: any;
-try {
-  if (connectionString) {
-    pool = new Pool({
-      connectionString,
-      ssl: { rejectUnauthorized: false }
-    });
-  } else {
-    throw new Error('No connection string');
-  }
-} catch (err) {
-  console.warn('[AI Studio] DB not connected — mock active', err);
-  pool = { 
-    query: async () => ({ rows: [] }), 
-    connect: async () => ({ query: async () => ({ rows: [] }), release: () => {} }) 
-  };
-}
+// --- Firebase connection ---
 
 const ROW_ID = 1;
 
@@ -566,15 +546,7 @@ export class PortfolioDatabase {
     return this.ready;
   }
 
-  private async ensureTable() {
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS portfolio_data (
-        id INTEGER PRIMARY KEY,
-        data JSONB NOT NULL,
-        updated_at TIMESTAMPTZ DEFAULT NOW()
-      );
-    `);
-  }
+
 
   private mergeWithDefaults(parsed: PortfolioData): PortfolioData {
     return {
@@ -613,21 +585,55 @@ export class PortfolioDatabase {
 
   private async loadData(): Promise<void> {
     try {
-      await this.ensureTable();
-      const result = await pool.query('SELECT data FROM portfolio_data WHERE id = $1', [ROW_ID]);
-      if (result.rows.length > 0) {
-        const parsed = result.rows[0].data as PortfolioData;
-        this.data = this.mergeWithDefaults(parsed);
-      } else {
-        // First ever boot against this database: seed it with the defaults.
-        await pool.query(
-          'INSERT INTO portfolio_data (id, data) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING',
-          [ROW_ID, JSON.stringify(this.data)]
-        );
+      let loadedData: any = {};
+      const keys = Object.keys(DEFAULT_PORTFOLIO_DATA);
+      let foundAny = false;
+      
+      // Load all chunks for logoUrl if necessary
+      let logoUrl = '';
+      try {
+         const imageDocs = await getDocs(collection(firestore, 'portfolio_images'));
+         const chunks: {index: number, data: string}[] = [];
+         imageDocs.forEach(d => {
+            if (d.id.startsWith('logo_')) {
+               chunks.push({index: d.data().index, data: d.data().data});
+            }
+         });
+         chunks.sort((a,b) => a.index - b.index);
+         logoUrl = chunks.map(c => c.data).join('');
+      } catch (e) {
+         console.warn("Could not load logo chunks", e);
+      }
+
+      for (const key of keys) {
+        let docRef;
+        if (key === 'adminConfig') {
+          docRef = doc(firestore, 'portfolio', 'adminConfig');
+        } else {
+          docRef = doc(firestore, 'portfolio', key);
+        }
+        const snap = await getDoc(docRef);
+        if (snap.exists()) {
+          foundAny = true;
+          if (key === 'adminConfig') {
+             loadedData[key] = snap.data() as any;
+          } else {
+             loadedData[key] = (snap.data() as any).data;
+          }
+        }
+      }
+      
+      if (logoUrl && loadedData.profile) {
+         loadedData.profile.logoUrl = logoUrl;
+      }
+
+      if (foundAny) {
+        this.data = this.mergeWithDefaults(loadedData as PortfolioData);
       }
     } catch (err) {
-      console.error('Error loading portfolio database from Postgres (using in-memory defaults instead):', err);
+      console.error('Error loading portfolio database from Firebase (using in-memory defaults instead):', err);
     }
+  
   }
 
   // Tracks the most recent Postgres write so callers running in a
@@ -639,12 +645,33 @@ export class PortfolioDatabase {
   private pendingWrite: Promise<void> = Promise.resolve();
 
   private sync() {
-    // In-memory `this.data` is already updated by the caller before this runs,
-    // so every public method below still returns synchronously exactly as before.
-    this.pendingWrite = pool
-      .query('UPDATE portfolio_data SET data = $1, updated_at = NOW() WHERE id = $2', [JSON.stringify(this.data), ROW_ID])
+    const keys = Object.keys(this.data);
+    const promises = [];
+    
+    // Save chunks
+    let logoUrl = this.data.profile.logoUrl;
+    let dataToSave = { ...this.data };
+    
+    if (logoUrl && logoUrl.length > 500000) {
+      dataToSave.profile = { ...dataToSave.profile, logoUrl: 'chunked' };
+      const numChunks = Math.ceil(logoUrl.length / 500000);
+      for (let i = 0; i < numChunks; i++) {
+        const chunk = logoUrl.slice(i * 500000, (i + 1) * 500000);
+        promises.push(setDoc(doc(firestore, 'portfolio_images', `logo_${i}`), { data: chunk, index: i, total: numChunks }));
+      }
+    }
+
+    for (const key of keys) {
+      if (key === 'adminConfig') {
+        promises.push(setDoc(doc(firestore, 'portfolio', 'adminConfig'), (dataToSave as any)[key]));
+      } else {
+        promises.push(setDoc(doc(firestore, 'portfolio', key), { data: (dataToSave as any)[key] }));
+      }
+    }
+    
+    this.pendingWrite = Promise.all(promises)
       .then(() => {})
-      .catch(err => console.error('Failed to persist database to Postgres:', err));
+      .catch(err => console.error('Failed to persist database to Firebase:', err));
   }
 
   // Waits for the most recently triggered Postgres write to finish. Call
