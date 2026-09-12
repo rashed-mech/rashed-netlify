@@ -75,6 +75,10 @@ export async function createApp() {
   app.get('/api/portfolio', (req: Request, res: Response) => {
     try {
       const data = db.getPublicData();
+      // Cache at the CDN Edge (Netlify/Vercel) for 60 seconds. 
+      // Serve stale data instantly while fetching fresh data in the background (up to 1 day).
+      // This completely bypasses the database cold start for public visitors!
+      res.setHeader('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=86400');
       res.json({ success: true, data });
     } catch (err: any) {
       res.status(500).json({ success: false, message: err.message });
