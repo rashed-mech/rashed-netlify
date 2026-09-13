@@ -72,6 +72,53 @@ export async function createApp() {
   });
 
   // Get public portfolio content
+  app.get('/api/portfolio/avatar', (req: Request, res: Response) => {
+    try {
+      const avatarUrl = (db as any).data.profile.avatarUrl;
+      if (!avatarUrl || !avatarUrl.startsWith('data:image/')) {
+        return res.status(404).send('Avatar not found or not a valid data URI');
+      }
+      
+      const matches = avatarUrl.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
+      if (!matches || matches.length !== 3) {
+        return res.status(404).send('Invalid image data');
+      }
+      
+      const mimeType = matches[1];
+      const buffer = Buffer.from(matches[2], 'base64');
+      
+      res.setHeader('Content-Type', mimeType);
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      res.send(buffer);
+    } catch (err: any) {
+      res.status(500).send(err.message);
+    }
+  });
+
+  app.get('/api/portfolio/logo', (req: Request, res: Response) => {
+    try {
+      // db.data has the original Base64 string!
+      const logoUrl = (db as any).data.profile.logoUrl;
+      if (!logoUrl || !logoUrl.startsWith('data:image/')) {
+        return res.status(404).send('Logo not found or not a valid data URI');
+      }
+      
+      const matches = logoUrl.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
+      if (!matches || matches.length !== 3) {
+        return res.status(404).send('Invalid image data');
+      }
+      
+      const mimeType = matches[1];
+      const buffer = Buffer.from(matches[2], 'base64');
+      
+      res.setHeader('Content-Type', mimeType);
+      res.setHeader('Cache-Control', 'public, max-age=86400'); // Cache for 1 day
+      res.send(buffer);
+    } catch (err: any) {
+      res.status(500).send(err.message);
+    }
+  });
+
   app.get('/api/portfolio', (req: Request, res: Response) => {
     try {
       const data = db.getPublicData();

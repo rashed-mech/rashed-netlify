@@ -690,15 +690,36 @@ export class PortfolioDatabase {
   }
 
   public getFullData(): PortfolioData {
-    return this.data;
+    const { profile, ...rest } = this.data;
+    const safeProfile = { ...profile };
+    if (safeProfile.logoUrl && safeProfile.logoUrl.startsWith('data:')) {
+      safeProfile.logoUrl = '/api/portfolio/logo';
+    }
+    if (safeProfile.avatarUrl && safeProfile.avatarUrl.startsWith('data:')) {
+      safeProfile.avatarUrl = '/api/portfolio/avatar';
+    }
+    return { ...rest, profile: safeProfile } as PortfolioData;
   }
 
   public getPublicData(): Omit<PortfolioData, 'messages' | 'adminConfig'> {
-    const { messages, adminConfig, ...publicData } = this.data;
-    return publicData;
+    const { messages, adminConfig, profile, ...rest } = this.data;
+    const publicProfile = { ...profile };
+    if (publicProfile.logoUrl && publicProfile.logoUrl.startsWith('data:')) {
+      publicProfile.logoUrl = '/api/portfolio/logo';
+    }
+    if (publicProfile.avatarUrl && publicProfile.avatarUrl.startsWith('data:')) {
+      publicProfile.avatarUrl = '/api/portfolio/avatar';
+    }
+    return { ...rest, profile: publicProfile };
   }
 
   public updateProfile(updatedProfile: Partial<PortfolioData['profile']>): PortfolioData['profile'] {
+    if (updatedProfile.logoUrl === '/api/portfolio/logo') {
+      delete updatedProfile.logoUrl;
+    }
+    if (updatedProfile.avatarUrl === '/api/portfolio/avatar') {
+      delete updatedProfile.avatarUrl;
+    }
     this.data.profile = {
       ...this.data.profile,
       ...updatedProfile,

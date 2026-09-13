@@ -713,13 +713,34 @@ var PortfolioDatabase = class {
     }
   }
   getFullData() {
-    return this.data;
+    const { profile, ...rest } = this.data;
+    const safeProfile = { ...profile };
+    if (safeProfile.logoUrl && safeProfile.logoUrl.startsWith("data:")) {
+      safeProfile.logoUrl = "/api/portfolio/logo";
+    }
+    if (safeProfile.avatarUrl && safeProfile.avatarUrl.startsWith("data:")) {
+      safeProfile.avatarUrl = "/api/portfolio/avatar";
+    }
+    return { ...rest, profile: safeProfile };
   }
   getPublicData() {
-    const { messages, adminConfig, ...publicData } = this.data;
-    return publicData;
+    const { messages, adminConfig, profile, ...rest } = this.data;
+    const publicProfile = { ...profile };
+    if (publicProfile.logoUrl && publicProfile.logoUrl.startsWith("data:")) {
+      publicProfile.logoUrl = "/api/portfolio/logo";
+    }
+    if (publicProfile.avatarUrl && publicProfile.avatarUrl.startsWith("data:")) {
+      publicProfile.avatarUrl = "/api/portfolio/avatar";
+    }
+    return { ...rest, profile: publicProfile };
   }
   updateProfile(updatedProfile) {
+    if (updatedProfile.logoUrl === "/api/portfolio/logo") {
+      delete updatedProfile.logoUrl;
+    }
+    if (updatedProfile.avatarUrl === "/api/portfolio/avatar") {
+      delete updatedProfile.avatarUrl;
+    }
     this.data.profile = {
       ...this.data.profile,
       ...updatedProfile,
@@ -1508,6 +1529,44 @@ async function createApp() {
   });
   app2.get("/api/health", (req, res) => {
     res.json({ status: "ok", timestamp: (/* @__PURE__ */ new Date()).toISOString() });
+  });
+  app2.get("/api/portfolio/avatar", (req, res) => {
+    try {
+      const avatarUrl = db.data.profile.avatarUrl;
+      if (!avatarUrl || !avatarUrl.startsWith("data:image/")) {
+        return res.status(404).send("Avatar not found or not a valid data URI");
+      }
+      const matches = avatarUrl.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
+      if (!matches || matches.length !== 3) {
+        return res.status(404).send("Invalid image data");
+      }
+      const mimeType = matches[1];
+      const buffer = Buffer.from(matches[2], "base64");
+      res.setHeader("Content-Type", mimeType);
+      res.setHeader("Cache-Control", "public, max-age=86400");
+      res.send(buffer);
+    } catch (err) {
+      res.status(500).send(err.message);
+    }
+  });
+  app2.get("/api/portfolio/logo", (req, res) => {
+    try {
+      const logoUrl = db.data.profile.logoUrl;
+      if (!logoUrl || !logoUrl.startsWith("data:image/")) {
+        return res.status(404).send("Logo not found or not a valid data URI");
+      }
+      const matches = logoUrl.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
+      if (!matches || matches.length !== 3) {
+        return res.status(404).send("Invalid image data");
+      }
+      const mimeType = matches[1];
+      const buffer = Buffer.from(matches[2], "base64");
+      res.setHeader("Content-Type", mimeType);
+      res.setHeader("Cache-Control", "public, max-age=86400");
+      res.send(buffer);
+    } catch (err) {
+      res.status(500).send(err.message);
+    }
   });
   app2.get("/api/portfolio", (req, res) => {
     try {
