@@ -1,3 +1,4 @@
+import '../../load-env.ts';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, doc, getDoc, setDoc, getDocs, collection } from 'firebase/firestore';
 import config from '../../firebase-applet-config.json';
@@ -523,7 +524,7 @@ const DEFAULT_PORTFOLIO_DATA: PortfolioData = {
   messages: [],
   adminConfig: {
     username: process.env.ADMIN_USERNAME || 'admin',
-    passwordHashOrPlain: process.env.ADMIN_PASSWORD || 'adminpassword123',
+    passwordHashOrPlain: process.env.ADMIN_PASSWORD || '',
     lastUpdated: new Date().toISOString()
   }
 };
@@ -737,12 +738,64 @@ export class PortfolioDatabase {
   }
 
   public getAdminConfig() {
-    return this.data.adminConfig || DEFAULT_PORTFOLIO_DATA.adminConfig!;
+    const envUsername = (process.env.ADMIN_USERNAME || '').trim();
+    const envPassword = (process.env.ADMIN_PASSWORD || '').trim();
+    const dbConfig = this.data.adminConfig;
+
+    return {
+      username: envUsername || dbConfig?.username || 'admin',
+      passwordHashOrPlain: envPassword || dbConfig?.passwordHashOrPlain || '',
+      lastUpdated: dbConfig?.lastUpdated || new Date().toISOString()
+    };
   }
 
   public verifyAdmin(username: string, passwordAttempt: string): boolean {
-    const config = this.getAdminConfig();
-    return config.username === username && config.passwordHashOrPlain === passwordAttempt;
+    const envUsername = (process.env.ADMIN_USERNAME || '').trim();
+    const envPassword = (process.env.ADMIN_PASSWORD || '').trim();
+
+    const dbConfig = this.data.adminConfig || {};
+    const dbUsername = (dbConfig.username || '').trim();
+    const dbPassword = (dbConfig.passwordHashOrPlain || '').trim();
+
+    const inputUser = (username || '').trim();
+    const inputPass = (passwordAttempt || '').trim();
+
+    if (!inputPass) return false;
+
+    // 1. Primary check against environment variables (if set)
+    if (envPassword) {
+      const allowedEnvUsers = [
+        (envUsername || 'admin').toLowerCase(),
+        'admin',
+        'rashed',
+        'rashed.me.82@gmail.com'
+      ];
+
+      // Exact match with configured env username (or admin aliases)
+      if (allowedEnvUsers.includes(inputUser.toLowerCase()) && inputPass === envPassword) {
+        return true;
+      }
+
+      // In case username and password were reversed in environment configuration:
+      if (envUsername && inputUser.toLowerCase() === envPassword.toLowerCase() && inputPass === envUsername) {
+        return true;
+      }
+    }
+
+    // 2. Fallback check against stored database credentials
+    if (dbPassword) {
+      const allowedDbUsers = [
+        (dbUsername || 'admin').toLowerCase(),
+        'admin',
+        'rashed',
+        'rashed.me.82@gmail.com'
+      ];
+      if (allowedDbUsers.includes(inputUser.toLowerCase()) && inputPass === dbPassword) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
 

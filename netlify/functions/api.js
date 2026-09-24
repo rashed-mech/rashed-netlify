@@ -36,7 +36,8 @@ module.exports = __toCommonJS(handler_netlify_exports);
 // load-env.ts
 var import_dotenv = __toESM(require("dotenv"), 1);
 var import_path = __toESM(require("path"), 1);
-import_dotenv.default.config({ path: import_path.default.resolve(process.cwd(), ".env.local") });
+import_dotenv.default.config({ path: import_path.default.resolve(process.cwd(), ".env") });
+import_dotenv.default.config({ path: import_path.default.resolve(process.cwd(), ".env.local"), override: true });
 
 // api-src/handler-netlify.ts
 var import_serverless_http = __toESM(require("serverless-http"), 1);
@@ -579,7 +580,7 @@ var DEFAULT_PORTFOLIO_DATA = {
   messages: [],
   adminConfig: {
     username: process.env.ADMIN_USERNAME || "admin",
-    passwordHashOrPlain: process.env.ADMIN_PASSWORD || "adminpassword123",
+    passwordHashOrPlain: process.env.ADMIN_PASSWORD || "",
     lastUpdated: (/* @__PURE__ */ new Date()).toISOString()
   }
 };
@@ -757,11 +758,50 @@ var PortfolioDatabase = class {
     return this.data.profile;
   }
   getAdminConfig() {
-    return this.data.adminConfig || DEFAULT_PORTFOLIO_DATA.adminConfig;
+    const envUsername = (process.env.ADMIN_USERNAME || "").trim();
+    const envPassword = (process.env.ADMIN_PASSWORD || "").trim();
+    const dbConfig = this.data.adminConfig;
+    return {
+      username: envUsername || dbConfig?.username || "admin",
+      passwordHashOrPlain: envPassword || dbConfig?.passwordHashOrPlain || "",
+      lastUpdated: dbConfig?.lastUpdated || (/* @__PURE__ */ new Date()).toISOString()
+    };
   }
   verifyAdmin(username, passwordAttempt) {
-    const config = this.getAdminConfig();
-    return config.username === username && config.passwordHashOrPlain === passwordAttempt;
+    const envUsername = (process.env.ADMIN_USERNAME || "").trim();
+    const envPassword = (process.env.ADMIN_PASSWORD || "").trim();
+    const dbConfig = this.data.adminConfig || {};
+    const dbUsername = (dbConfig.username || "").trim();
+    const dbPassword = (dbConfig.passwordHashOrPlain || "").trim();
+    const inputUser = (username || "").trim();
+    const inputPass = (passwordAttempt || "").trim();
+    if (!inputPass) return false;
+    if (envPassword) {
+      const allowedEnvUsers = [
+        (envUsername || "admin").toLowerCase(),
+        "admin",
+        "rashed",
+        "rashed.me.82@gmail.com"
+      ];
+      if (allowedEnvUsers.includes(inputUser.toLowerCase()) && inputPass === envPassword) {
+        return true;
+      }
+      if (envUsername && inputUser.toLowerCase() === envPassword.toLowerCase() && inputPass === envUsername) {
+        return true;
+      }
+    }
+    if (dbPassword) {
+      const allowedDbUsers = [
+        (dbUsername || "admin").toLowerCase(),
+        "admin",
+        "rashed",
+        "rashed.me.82@gmail.com"
+      ];
+      if (allowedDbUsers.includes(inputUser.toLowerCase()) && inputPass === dbPassword) {
+        return true;
+      }
+    }
+    return false;
   }
   updateSectionConfig(sectionConfig) {
     this.data.sectionConfig = sectionConfig;

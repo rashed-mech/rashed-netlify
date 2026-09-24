@@ -580,7 +580,7 @@
   "messages": [],
   "adminConfig": {
     "username": "admin",
-    "passwordHashOrPlain": "admin@rashed1998",
+    "passwordHashOrPlain": "",
     "lastUpdated": "2026-08-28T14:54:29.670Z"
   }
 }
